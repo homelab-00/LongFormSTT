@@ -5,7 +5,6 @@ import wave
 import os
 import threading
 import pyperclip
-from rich import print
 from rich.console import Console
 from rich.panel import Panel
 from faster_whisper import WhisperModel
@@ -55,7 +54,7 @@ def toggle_paste():
     global paste_enabled
     paste_enabled = not paste_enabled
     status = "enabled" if paste_enabled else "disabled"
-    console.print(f"[bold yellow]Paste {status}.[/bold yellow]")
+    console.print(f"[italic green]Paste[/italic green] [italic]{status}.[/italic]")
 
 def start_recording():
     global recording, temp_file, stream, wave_file, recording_thread
