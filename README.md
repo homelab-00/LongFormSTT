@@ -155,7 +155,7 @@ Most parameters are commented inside the script. The ones you'll mostly care abo
 * `CHUNK_SPLIT_INTERVAL` (*default=60*): Defines how long each temp audio chunk is in seconds.
 * `model_id` (*default="Systran/faster-whisper-large-v3"*): The model used for transcription. You can change it by simply copying the name of the model you're interested in from Hugging Face.
 * `language` (*default="en" for the English version*): The main language you'll be speaking to the script. This doesn't mean that it won't recognize anything spoken in other languages; I use the script with the language set to "el" (Greek) and I can throw some English words and even small sentences in with no problem. Though this depends on the model and language mix.  
-The full list of languages (and their associated codes) for the `whisper` family of models can be found [here](https://github.com/openai/whisper/blob/main/whisper/tokenizer.py).
+The full list of languages (and their associated codes) for the *whisper* family of models can be found [here](https://github.com/openai/whisper/blob/main/whisper/tokenizer.py).
 
 ## Preview
 
