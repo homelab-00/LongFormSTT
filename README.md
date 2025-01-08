@@ -12,7 +12,7 @@ The temp audio files are auto deleted every time a new recording starts. This is
 at least you don't lose the recordings. If that happens, then you can use a much simpler script that just transcribes a single audio file and get
 your data that way. Maybe combine the temp audio files in Audacity (though I'm not sure if the `whisper` models like it when the audio files get too long).
 
-The model I'm using by default is *Systran/faster-whisper-large-v3* (configurable). That means it's the *faster-whisper* version of *whisper-larger-v3*. There are other versions of
+The model I'm using by default is [*Systran/faster-whisper-large-v3*](https://huggingface.co/Systran/faster-whisper-large-v3) (configurable). That means it's the *faster-whisper* version of *whisper-larger-v3*. There are other versions of
 *whisper-large-v3* (such as *distil*) and of course other models. This one works best for my hardware and use case. (Specifically the *distil* version doesn't
 work well with Greek, which is what I'm mostly speaking to it. I think it auto-translates or something. But for English it's great.)
 
@@ -152,10 +152,10 @@ in focus, that means the transcription is done and you can press F4 again to unl
 Most parameters are commented inside the script. The ones you'll mostly care about are:
 
 * `THRESHOLD` (*default=500*): Defines how aggressive silence detection is.
-* `CHUNK_SPLIT_INTERVAL` (*default=60*): Defines how long each temp audio chunk is.
+* `CHUNK_SPLIT_INTERVAL` (*default=60*): Defines how long each temp audio chunk is in seconds.
 * `model_id` (*default="Systran/faster-whisper-large-v3"*): The model used for transcription. You can change it by simply copying the name of the model you're interested in from Hugging Face.
-* `language` (*default="en"*): The main language you'll be speaking to the script. This doesn't mean that it won't recognize anything spoken in other languages; I use the script with the language set to "el" (Greek) and
-  I can throw some English words and even small sentences in with no problem. Though this depends on the model and language mix.
+* `language` (*default="en" for the English version*): The main language you'll be speaking to the script. This doesn't mean that it won't recognize anything spoken in other languages; I use the script with the language set to "el" (Greek) and I can throw some English words and even small sentences in with no problem. Though this depends on the model and language mix.  
+The full list of languages (and their associated codes) for the `whisper` family of models can be found [here](https://github.com/openai/whisper/blob/main/whisper/tokenizer.py).
 
 ## Preview
 
