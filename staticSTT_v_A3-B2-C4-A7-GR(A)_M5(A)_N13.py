@@ -22,8 +22,8 @@ CHUNK_SPLIT_INTERVAL = 60    # How many seconds is each chunk, default 1 minute
 
 # Hallucination filtering with regex (optional)
 HALLUCINATIONS_REGEX = [
-    re.compile(r"\bΥπότιτλοι\s+AUTHORWAVE\[^\w]*", re.IGNORECASE),
-    re.compile(r"\bΣας\s+ευχαριστώ\b[^\w]*", re.IGNORECASE)
+    re.compile(r"\bΥπότιτλοι\s+AUTHORWAVE\b[^\w]*", re.IGNORECASE),
+    re.compile(r"\bΣας\s+ευχαριστώ\b[^\w]*", re.IGNORECASE),
     # Add more patterns if needed
 ]
 
@@ -37,7 +37,7 @@ device = "cuda" if torch.cuda.is_available() else "cpu"
 model_id = "Systran/faster-whisper-large-v3"
 model = WhisperModel(model_id, device=device, compute_type="float16" if device == "cuda" else "float32")
 
-language = "el"
+language = "en"
 task = "transcribe"
 
 paste_enabled = True
