@@ -12,19 +12,28 @@ from faster_whisper import WhisperModel
 import audioop
 import re
 import glob
+import numpy as np
+from scipy.io import wavfile
+import noisereduce as nr
 
 # --------------------------------------------------------------------------------------
 # Configuration
 # --------------------------------------------------------------------------------------
-THRESHOLD = 500              # Amplitude threshold for silence vs. voice
-SILENCE_LIMIT_SEC = 1.5      # Keep up to 1.5 seconds of silence
-CHUNK_SPLIT_INTERVAL = 60    # How many seconds is each chunk, default 1 minute
+THRESHOLD = 500
+SILENCE_LIMIT_SEC = 1.5
+CHUNK_SPLIT_INTERVAL = 60
 
-# Hallucination filtering with regex (optional)
+# Accuracy enhancements
+INITIAL_PROMPT = (
+    "Γεια σας, αυτή είναι μια ομιλία στα Ελληνικά. "
+    "Παρακαλώ χρησιμοποιήστε σωστά τονισμούς και σημεία στίξης. "
+    "Διευκρινίζεται πως πρόκειται για ανεπίσημη συζήτηση. "
+    "Ομιλητής: Άνδρας, Ελληνική προφορά."
+)
+CUSTOM_WORDS_FILE = os.path.join(os.path.dirname(__file__), "custom_words.txt")
 HALLUCINATIONS_REGEX = [
     re.compile(r"\bΥπότιτλοι\s+AUTHORWAVE\b[^\w]*", re.IGNORECASE),
     re.compile(r"\bΣας\s+ευχαριστώ\b[^\w]*", re.IGNORECASE),
-    # Add more patterns if needed
 ]
 
 # --------------------------------------------------------------------------------------
@@ -37,7 +46,7 @@ device = "cuda" if torch.cuda.is_available() else "cpu"
 model_id = "Systran/faster-whisper-large-v3"
 model = WhisperModel(model_id, device=device, compute_type="float16" if device == "cuda" else "float32")
 
-language = "en"
+language = "el"
 task = "transcribe"
 
 paste_enabled = True
@@ -68,6 +77,98 @@ chunks_per_second = RATE // CHUNK
 
 # Audio buffer used in record loop
 buffer = []
+
+# --------------------------------------------------------------------------------------
+# Audio Preprocessing
+# --------------------------------------------------------------------------------------
+def preprocess_audio(filepath):
+    """Enhanced audio cleaning even in quiet environments"""
+    try:
+        rate, data = wavfile.read(filepath)
+        original_dtype = data.dtype
+        
+        # Convert to float32 for high precision processing
+        data = data.astype(np.float32) / np.iinfo(original_dtype).max
+        
+        # Aggressive noise reduction
+        reduced_noise = nr.reduce_noise(
+            y=data,
+            sr=rate,
+            stationary=True,
+            prop_decrease=0.95,
+            n_fft=1024,
+            use_tensorflow=True
+        )
+        
+        # Normalize audio to -1dBFS peak
+        peak = np.max(np.abs(reduced_noise))
+        reduced_noise = reduced_noise * (0.9 / peak)
+        
+        # Convert back to original format and save
+        processed = (reduced_noise * np.iinfo(original_dtype).max).astype(original_dtype)
+        wavfile.write(filepath, rate, processed)
+        
+    except Exception as e:
+        console.print(f"[yellow]Audio preprocessing failed: {e}[/yellow]")
+
+# --------------------------------------------------------------------------------------
+# Specialized Vocabulary Handling
+# --------------------------------------------------------------------------------------
+def load_custom_words():
+    """Load domain-specific vocabulary from file"""
+    custom_words = []
+    if os.path.exists(CUSTOM_WORDS_FILE):
+        try:
+            with open(CUSTOM_WORDS_FILE, "r", encoding="utf-8") as f:
+                custom_words = [line.strip() for line in f if line.strip()]
+        except Exception as e:
+            console.print(f"[red]Error loading custom words: {e}[/red]")
+    return custom_words
+
+# --------------------------------------------------------------------------------------
+# Enhanced Transcription
+# --------------------------------------------------------------------------------------
+def partial_transcribe(chunk_path):
+    global partial_transcripts
+    try:
+        # Preprocess audio before transcription
+        preprocess_audio(chunk_path)
+        
+        # Load custom vocabulary
+        custom_words = load_custom_words()
+        
+        # Enhanced transcription parameters
+        segments, info = model.transcribe(
+            chunk_path,
+            language=language,
+            task=task,
+            beam_size=5,
+            best_of=5,
+            temperature=[0.0, 0.2, 0.4, 0.6, 0.8, 1.0],
+            vad_filter=True,
+            initial_prompt=INITIAL_PROMPT,
+            word_boost=custom_words,
+            suppress_blank=False,
+            repetition_penalty=1.2,
+            vad_parameters=dict(
+                threshold=0.5,
+                min_speech_duration_ms=500,
+                max_speech_duration_s=20,
+            )
+        )
+        
+        text = "".join(s.text for s in segments)
+        
+        # Remove hallucinations
+        for pattern in HALLUCINATIONS_REGEX:
+            text = pattern.sub("", text)
+
+        console.print(f"[cyan]Partial transcription of {os.path.basename(chunk_path)}[/cyan]")
+        console.print(f"[bold magenta]{text}[/bold magenta]\n")
+
+        partial_transcripts.append(text)
+    except Exception as e:
+        console.print(f"[bold red]Partial transcription failed for {chunk_path}: {e}[/bold red]")
 
 # --------------------------------------------------------------------------------------
 # Internal Reset
@@ -306,6 +407,8 @@ def partial_transcribe(chunk_path):
     try:
         segments, info = model.transcribe(chunk_path, language=language, task=task)
         text = "".join(s.text for s in segments)
+        if text.startswith(" "):
+            text = text[1:]
 
         # Remove hallucinations
         for pattern in HALLUCINATIONS_REGEX:
