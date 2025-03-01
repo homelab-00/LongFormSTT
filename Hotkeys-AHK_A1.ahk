@@ -37,6 +37,9 @@ return
 return
 
 *F6::
-    ; Move QUIT command here
     RunWait, %comspec% /c echo QUIT | ncat 127.0.0.1 34909,, Hide
+return
+
+*F10::
+    RunWait, %comspec% /c echo TRANSCRIBE_STATIC | ncat 127.0.0.1 34909,, Hide
 return
