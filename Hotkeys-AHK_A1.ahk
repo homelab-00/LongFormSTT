@@ -37,6 +37,10 @@ return
 return
 
 *F6::
+    RunWait, %comspec% /c echo RESET_TRANSCRIPTION | ncat 127.0.0.1 34909,, Hide
+return
+
+*F7::
     RunWait, %comspec% /c echo QUIT | ncat 127.0.0.1 34909,, Hide
 return
 
