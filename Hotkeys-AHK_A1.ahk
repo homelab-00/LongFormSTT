@@ -18,10 +18,16 @@ SetWorkingDir %A_ScriptDir%
 ; ----------------------------------------------------------
 
 
+; Send message "TOGGLE_LANGUAGE" to Python server running on localhost:34909
+; Use the Hide parameter (3rd argument). No console window is shown.
+; Also for F2, detect double-tap
 *F2::
-    ; Send message "TOGGLE_LANGUAGE" to Python server running on localhost:34909
-    ; Use the Hide parameter (3rd argument). No console window is shown.
-    RunWait, %comspec% /c echo TOGGLE_LANGUAGE | ncat 127.0.0.1 34909,, Hide
+    KeyWait, F2
+    KeyWait, F2, D T0.3  ; Wait for F2 to be pressed again within 300ms
+    if ErrorLevel  ; Timeout, so single-press
+        RunWait, %comspec% /c echo OPEN_LANGUAGE_MENU | ncat 127.0.0.1 34909,, Hide
+    else  ; Double-press detected
+        RunWait, %comspec% /c echo TOGGLE_LANGUAGE | ncat 127.0.0.1 34909,, Hide
 return
 
 *F3::
@@ -42,6 +48,14 @@ return
 
 *F7::
     RunWait, %comspec% /c echo QUIT | ncat 127.0.0.1 34909,, Hide
+return
+
+*F8::
+    RunWait, %comspec% /c echo OPEN_AUDIO_SOURCE_MENU | ncat 127.0.0.1 34909,, Hide
+return
+
+*F9::
+    RunWait, %comspec% /c echo TOGGLE_REALTIME_TRANSCRIPTION | ncat 127.0.0.1 34909,, Hide
 return
 
 *F10::
