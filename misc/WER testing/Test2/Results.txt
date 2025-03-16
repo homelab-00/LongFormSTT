@@ -1,0 +1,69 @@
+✅ Found control.txt and 8 files to compare:
+ - output_N13.txt      
+ - output_N13_v2.txt   
+ - output_R1.txt       
+ - output_R1_v2.txt    
+ - output_R2.txt       
+ - output_R3.txt       
+ - output_R4.txt       
+ - output_R4_v2.txt    
+
+🏁 Starting analysis...
+
+📊 Results for output_N13.txt:
+  WER: 12.67%
+  Insertions: 13
+  Deletions: 6
+  Substitutions: 36
+  Total Reference Words: 434
+
+📊 Results for output_N13_v2.txt:
+  WER: 10.60%
+  Insertions: 5
+  Deletions: 5
+  Substitutions: 36
+  Total Reference Words: 434
+
+📊 Results for output_R1.txt:
+  WER: 11.29%
+  Insertions: 1
+  Deletions: 9
+  Substitutions: 39
+  Total Reference Words: 434
+
+📊 Results for output_R1_v2.txt:
+  WER: 9.91%
+  Insertions: 1
+  Deletions: 6
+  Substitutions: 36
+  Total Reference Words: 434
+
+📊 Results for output_R2.txt:
+  WER: 11.06%
+  Insertions: 2
+  Deletions: 9
+  Substitutions: 37
+  Total Reference Words: 434
+
+📊 Results for output_R3.txt:
+  WER: 10.14%
+  Insertions: 3
+  Deletions: 6
+  Substitutions: 35
+  Total Reference Words: 434
+
+📊 Results for output_R4.txt:
+  WER: 8.99%
+  Insertions: 4
+  Deletions: 2
+  Substitutions: 33
+  Total Reference Words: 434
+
+📊 Results for output_R4_v2.txt:
+  WER: 8.53%
+  Insertions: 2
+  Deletions: 2
+  Substitutions: 33
+  Total Reference Words: 434
+
+✅ Analysis complete!

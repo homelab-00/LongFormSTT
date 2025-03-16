@@ -1,0 +1,29 @@
+✅ Found control.txt and 3 files to compare:
+ - output_N13.txt
+ - output_P5.txt
+ - output_R1.txt
+
+🏁 Starting analysis...       
+
+📊 Results for output_N13.txt:
+  WER: 10.83%
+  Insertions: 11
+  Deletions: 34
+  Substitutions: 203
+  Total Reference Words: 2289
+
+📊 Results for output_P5.txt:
+  WER: 14.72%
+  Insertions: 17
+  Deletions: 77
+  Substitutions: 243
+  Total Reference Words: 2289
+
+📊 Results for output_R1.txt:
+  WER: 10.62%
+  Insertions: 10
+  Deletions: 28
+  Substitutions: 205
+  Total Reference Words: 2289
+
+✅ Analysis complete!
