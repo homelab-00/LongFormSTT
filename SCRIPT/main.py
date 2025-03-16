@@ -33,6 +33,7 @@ import subprocess
 import psutil
 from dataclasses import dataclass
 from typing import List
+from RealtimeSTT import AudioToTextRecorderClient
 
 # Import modules
 from system_tray_icon_manager import TrayManager
@@ -558,19 +559,19 @@ class STTApp:
         if self.recorder.recording:
             # Flash white icon briefly for visual feedback on reset
             self.tray.flash_white('gray', self.config.send_enter)
-            
+
             self.console.print("[bold yellow]Resetting live transcription...[/bold yellow]")
             # Stop recording without transcribing
+            if hasattr(self.recorder, 'recorder') and self.recorder.recorder:
+                try:
+                    self.recorder.recorder.abort()
+                except Exception as e:
+                    self.console.print(f"[red]Error aborting recorder: {e}[/red]")
+
             self.recorder.recording = False
-            if self.recorder.recording_thread:
-                self.recorder.recording_thread.join()
-            
+
             # Clean up resources
             self.recorder._cleanup_resources()
-            
-            # Clear partial transcripts
-            self.recorder.partial_transcripts.clear()
-            self.recorder.buffer.clear()
 
             self.console.print("[green]Live transcription reset. Ready for new commands.[/green]")
         else:
@@ -580,7 +581,7 @@ class STTApp:
                 self.static_processor.request_abort()
             else:
                 self.console.print("[yellow]No transcription in progress to reset.[/yellow]")
-                
+
                 # Flash the tray icon white briefly to acknowledge the command
                 self.tray.flash_white('gray', self.config.send_enter)
     

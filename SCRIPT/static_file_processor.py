@@ -5,8 +5,8 @@
 # This module:
 # - Handles selecting audio/video files via a file dialog
 # - Converts various media formats to 16kHz mono WAV using FFmpeg
-# - Applies Voice Activity Detection (WebRTC VAD) to remove silence
-# - Transcribes the processed audio using the transcription engine
+# - Applies Voice Activity Detection to remove silence
+# - Transcribes the processed audio using the RealtimeSTT library
 # - Saves transcription results alongside the original file
 # - Manages temporary files and resource cleanup
 # - Provides methods to abort transcription in progress
@@ -27,6 +27,8 @@ from typing import Optional
 import tkinter
 from tkinter import filedialog
 from rich.panel import Panel
+import numpy as np
+from RealtimeSTT import AudioToTextRecorderClient
 
 # Optional dependencies
 try:
@@ -57,6 +59,7 @@ class StaticFileProcessor:
         self.transcription_thread = None
         self.static_transcription_lock = threading.Lock()
         self.abort_static_transcription = False
+        self.recorder = None
     
     def is_transcribing(self) -> bool:
         """Check if a static transcription is currently in progress."""
@@ -98,6 +101,13 @@ class StaticFileProcessor:
             
             # Store a reference to the thread for forced termination
             thread_to_terminate = self.transcription_thread
+            
+            # If we have a recorder instance, try to abort it
+            if self.recorder:
+                try:
+                    self.recorder.abort()
+                except Exception as e:
+                    self.console.print(f"[red]Error aborting recorder: {e}[/red]")
         
         self.console.print("[bold yellow]Static transcription abort requested.[/bold yellow]")
         self.console.print("[bold yellow]Forcing immediate termination of transcription...[/bold yellow]")
@@ -169,37 +179,59 @@ class StaticFileProcessor:
             # Step 3: Transcribe the processed audio
             self.console.print("[blue]Beginning transcription with voice-only data...[/blue]")
             
-            # Check if we should abort before starting transcription
-            if should_abort():
-                self.console.print("[bold yellow]Static transcription aborted before starting.[/bold yellow]")
-                self.tray.set_color('gray', self.config.send_enter)
-                return
-                
-            final_text = self.transcriber.transcribe(voice_wav)
-            
-            # Check abort flag after transcription
-            if should_abort():
-                self.console.print("[bold yellow]Static transcription completed but results discarded due to abort request.[/bold yellow]")
-                self.tray.set_color('gray', self.config.send_enter)
-                return
-            
-            # Display results
-            panel = Panel(
-                f"[bold magenta]Static File Transcription:[/bold magenta] {final_text}",
-                title="Static Transcription",
-                border_style="yellow"
+            # Initialize the RealtimeSTT recorder for file transcription
+            self.recorder = AudioToTextRecorderClient(
+                model=self.config.longform_model,
+                language=self.config.longform_language,
+                use_microphone=False,  # Don't use microphone since we're feeding audio data
+                spinner=False,  # We handle UI feedback with our tray
+                debug_mode=False
             )
-            self.console.print(panel)
             
-            # Save .txt alongside the original file
-            base_name = os.path.splitext(os.path.basename(file_path))[0]
-            dir_name = os.path.dirname(file_path)
-            out_txt_path = os.path.join(dir_name, base_name + ".txt")
+            # Read the WAV file and feed it to the recorder
+            try:
+                with wave.open(voice_wav, 'rb') as wf:
+                    framerate = wf.getframerate()
+                    frames = wf.readframes(wf.getnframes())
+                    
+                    # Feed the audio data to the recorder
+                    self.recorder.feed_audio(frames, framerate)
+                    
+                    # Get transcription
+                    final_text = self.recorder.text()
+                    
+                    # Check abort flag after transcription
+                    if should_abort():
+                        self.console.print("[bold yellow]Static transcription completed but results discarded due to abort request.[/bold yellow]")
+                        self.tray.set_color('gray', self.config.send_enter)
+                        return
+                    
+                    # Display results
+                    panel = Panel(
+                        f"[bold magenta]Static File Transcription:[/bold magenta] {final_text}",
+                        title="Static Transcription",
+                        border_style="yellow"
+                    )
+                    self.console.print(panel)
+                    
+                    # Save .txt alongside the original file
+                    base_name = os.path.splitext(os.path.basename(file_path))[0]
+                    dir_name = os.path.dirname(file_path)
+                    out_txt_path = os.path.join(dir_name, base_name + ".txt")
+                    
+                    with open(out_txt_path, "w", encoding="utf-8") as f:
+                        f.write(final_text)
+                    
+                    self.console.print(f"[green]Saved transcription to: {out_txt_path}[/green]")
             
-            with open(out_txt_path, "w", encoding="utf-8") as f:
-                f.write(final_text)
+            except Exception as e:
+                self.console.print(f"[bold red]Error transcribing file: {e}[/bold red]")
             
-            self.console.print(f"[green]Saved transcription to: {out_txt_path}[/green]")
+            finally:
+                # Clean up recorder resources
+                if self.recorder:
+                    self.recorder.shutdown()
+                    self.recorder = None
         
         except SystemExit:
             self.console.print("[yellow]Transcription thread was terminated by user request.[/yellow]")
@@ -210,6 +242,7 @@ class StaticFileProcessor:
             self.tray.set_color('gray', self.config.send_enter)
             with self.static_transcription_lock:
                 self.transcription_thread = None
+                self.recorder = None
 
     def _cleanup_temp_files(self) -> None:
         """Remove temporary files used for static transcription."""

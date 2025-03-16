@@ -1,30 +1,25 @@
-# audio_recorder.py
+# longform_audio_recorder.py
 #
-# Handles audio recording, buffering, and chunking for long-form transcription
+# Handles audio recording and transcription for long-form speech
 #
 # This module:
 # - Captures audio from microphone or system audio
-# - Buffers audio data and writes to temporary WAV files
-# - Detects silence to intelligently split audio into chunks (via peak amplitude detection and not WebRTC VAD)
-# - Manages time-based splitting for extended recordings
-# - Coordinates asynchronous transcription of audio chunks
-# - Combines partial transcriptions into a complete result
+# - Provides manual control for starting and stopping recording
+# - Manages transcription of recorded audio
 # - Sends transcribed text to clipboard and optionally presses Enter
 # - Provides visual feedback through the tray icon during operations
+# - Uses RealtimeSTT library for efficient transcription
 #
-# The chunking approach allows handling very long recordings while
-# providing incremental transcription results
+# Long-form mode allows users to control exactly when recording starts and stops,
+# ideal for dictating longer content
 
 import time
-import pyaudio
-import wave
 import os
 import threading
 import pyperclip
 import keyboard
-import struct
-import glob
 from rich.panel import Panel
+from RealtimeSTT import AudioToTextRecorderClient
 
 class LongFormAudioRecorder:
     def __init__(self, config, console, transcriber, tray):
@@ -33,289 +28,134 @@ class LongFormAudioRecorder:
         self.transcriber = transcriber
         self.tray = tray
         self.script_dir = os.path.dirname(os.path.abspath(__file__))
-        self.temp_dir = os.path.join(self.script_dir, "temp_audio")
-        
-        # Ensure temp_audio directory exists
-        if not os.path.exists(self.temp_dir):
-            try:
-                os.makedirs(self.temp_dir)
-                self.console.print(f"[green]Created temporary audio directory: {self.temp_dir}[/green]")
-            except Exception as e:
-                self.console.print(f"[red]Failed to create temp directory: {e}[/red]")
-                # Fall back to script directory if temp directory creation fails
-                self.temp_dir = self.script_dir
-        
-        # Initialize PyAudio
-        self.audio = pyaudio.PyAudio()
         
         # Recording state
         self.recording = False
         self.recording_thread = None
-        self.stream = None
-        self.active_wave_file = None
-        self.active_filename = None
-        
-        # Chunking state
-        self.current_chunk_index = 1
-        self.record_start_time = 0
-        self.next_split_time = 0
-        self.chunk_split_requested = False
-        
-        # Buffers and results
-        self.buffer = []
-        self.partial_transcripts = {}
-        self.transcription_threads = []
+        self.recorder = None
+        self.text_ready = threading.Event()
+        self.final_text = ""
     
-    def _cleanup_temp_files(self) -> None:
-        """Remove any temporary audio files from previous recordings."""
-        temp_files = glob.glob(os.path.join(self.temp_dir, "temp_audio_file*.wav"))
-        for f in temp_files:
-            try:
-                os.remove(f)
-                self.console.print(f"[yellow]Deleted file: {os.path.basename(f)}[/yellow]")
-            except Exception as e:
-                self.console.print(f"[red]Failed to delete {os.path.basename(f)}: {e}[/red]")
-    
-    def start(self) -> None:
-        """Start recording audio from the microphone."""
+    def start(self):
+        """Start recording audio."""
         if self.recording:
             self.console.print("[bold yellow]Already recording![/bold yellow]")
             return
 
         self.console.print("[bold green]Starting a new recording session[/bold green]")
-        self._cleanup_temp_files()
-
+        
         # Reset state
-        self.partial_transcripts.clear()
-        self.transcription_threads.clear()
-        self.buffer.clear()
-        self.current_chunk_index = 1
-
-        # Initialize timing for chunking
-        self.record_start_time = time.time()
-        self.next_split_time = self.record_start_time + self.config.chunk_split_interval
-        self.chunk_split_requested = False
-
-        # Set up recording
-        self.recording = True
-        first_file = os.path.join(self.temp_dir, f"temp_audio_file{self.current_chunk_index}.wav")
-        self.active_filename = first_file
-
+        self.final_text = ""
+        self.text_ready.clear()
+        
+        # Initialize the recorder - but don't start recording automatically
         try:
-            # Open audio stream
-            stream_params = {
-                'format': self.config.format,
-                'channels': self.config.channels,
-                'rate': self.config.rate,
-                'input': True,
-                'frames_per_buffer': self.config.chunk,
-                'input_device_index': self.config.input_device_index if self.config.longform_use_system_audio else None
-            }
-            self.stream = self.audio.open(**stream_params)
-
-            # Open wave file for saving
-            self.active_wave_file = wave.open(first_file, 'wb')
-            self.active_wave_file.setnchannels(self.config.channels)
-            self.active_wave_file.setsampwidth(self.audio.get_sample_size(self.config.format))
-            self.active_wave_file.setframerate(self.config.rate)
-
-            # Update tray icon and start recording thread
+            self.recorder = AudioToTextRecorderClient(
+                model=self.config.longform_model,
+                language=self.config.longform_language,
+                input_device_index=self.config.input_device_index if self.config.longform_use_system_audio else None,
+                enable_realtime_transcription=False,  # Not using real-time updates in long-form mode
+                on_recording_start=self._on_recording_start,
+                on_recording_stop=self._on_recording_stop,
+                spinner=False,  # We'll handle UI feedback with our tray
+                silero_sensitivity=0.5,
+                post_speech_silence_duration=0.8,  # Slightly longer for long-form
+                pre_recording_buffer_duration=0.5,
+                debug_mode=False
+            )
+            
+            # Update tray and state
             self.tray.set_color('red', self.config.send_enter)
-            self.recording_thread = threading.Thread(target=self._record_loop, daemon=True)
-            self.recording_thread.start()
-
+            self.recording = True
+            
+            # Set the recording_start event to begin recording
+            if hasattr(self.recorder, 'recording_start'):
+                self.recorder.recording_start.set()
+            
+            self.console.print("[green]Recording started.[/green]")
         except Exception as e:
             self.console.print(f"[bold red]Failed to start recording: {e}[/bold red]")
-            self.recording = False
             self._cleanup_resources()
     
-    def _record_loop(self) -> None:
-        """Main recording loop that captures audio and handles chunking."""
-        chunk_count = 0
-        silence_duration = 0.0
-
+    def _on_recording_start(self):
+        """Callback when recording starts."""
+        self.console.print("[cyan]Recording started[/cyan]")
+    
+    def _on_recording_stop(self):
+        """Callback when recording stops."""
+        self.console.print("[cyan]Recording stopped[/cyan]")
+    
+    def _cleanup_resources(self):
+        """Clean up resources and reset state."""
+        if self.recorder:
+            try:
+                self.recorder.shutdown()
+            except Exception as e:
+                self.console.print(f"[red]Error shutting down recorder: {e}[/red]")
+            finally:
+                self.recorder = None
+        
+        self.recording = False
+    
+    def _transcription_thread_func(self):
+        """Thread function to handle transcription after stopping recording."""
         try:
-            while self.recording:
-                # Read audio data
-                data = self.stream.read(self.config.chunk, exception_on_overflow=False)
-                samples = struct.unpack(f'<{len(data)//2}h', data)
-                peak = max(abs(sample) for sample in samples)
-                
-                # Calculate timing
-                chunk_time = float(self.config.chunk) / self.config.rate
-                now = time.time()
-                elapsed = now - self.record_start_time
-
-                # Check if we need to request a chunk split
-                if (not self.chunk_split_requested) and (elapsed >= (self.next_split_time - self.record_start_time)):
-                    self.console.print(f"[yellow]Reached {int(elapsed)} seconds. Will split on next silence.[/yellow]")
-                    self.chunk_split_requested = True
-
-                # Handle silence detection
-                if peak < self.config.threshold:
-                    silence_duration += chunk_time
-                    
-                    # Still add data during brief silences
-                    if silence_duration <= self.config.silence_limit_sec:
-                        self.buffer.append(data)
-                        chunk_count += 1
-
-                    # If splitting was requested and we have some silence, do the split
-                    if self.chunk_split_requested and (silence_duration >= 0.1):
-                        self.console.print("[bold green]Splitting now at silence...[/bold green]")
-                        self._split_chunk()
-                        self.next_split_time += self.config.chunk_split_interval
-                        self.chunk_split_requested = False
-                else:
-                    # Reset silence counter when we detect sound
-                    silence_duration = 0.0
-                    self.buffer.append(data)
-                    chunk_count += 1
-
-                # Periodically flush buffer to file
-                if chunk_count >= self.config.chunks_per_second:
-                    self._flush_buffer()
-                    chunk_count = 0
-
-            # Final buffer flush when stopping
-            self._flush_buffer()
+            # Get transcription text using the text() method
+            # This will automatically start the transcription process
+            self.final_text = self.recorder.text()
             
-        except Exception as e:
-            self.console.print(f"[bold red]Recording error: {e}[/bold red]")
-        finally:
+            # Clean up resources
             self._cleanup_resources()
-            self.recording = False
-            self.recording_thread = None
-            self.console.print("[green]Recording stopped.[/green]")
-    
-    def _flush_buffer(self) -> None:
-        """Write buffered audio data to the active wave file."""
-        if self.buffer and self.active_wave_file:
-            self.active_wave_file.writeframes(b''.join(self.buffer))
-            self.buffer.clear()
-    
-    def _cleanup_resources(self) -> None:
-        """Clean up audio resources."""
-        if hasattr(self, 'active_wave_file') and self.active_wave_file:
-            try:
-                self.active_wave_file.close()
-            except Exception as e:
-                self.console.print(f"[red]Error closing wave file: {e}[/red]")
-            self.active_wave_file = None
             
-        if hasattr(self, 'stream') and self.stream:
-            try:
-                self.stream.stop_stream()
-                self.stream.close()
-            except Exception as e:
-                self.console.print(f"[red]Error closing audio stream: {e}[/red]")
-            self.stream = None
-    
-    def _split_chunk(self) -> None:
-        """Split the current audio chunk and start transcribing it."""
-        if self.active_wave_file:
-            self.active_wave_file.close()
-            self.active_wave_file = None
-
-        chunk_path = self.active_filename
-        
-        # Log file info for debugging
-        if os.path.exists(chunk_path):
-            self.console.print(f"[yellow]split_chunk() -> file: {chunk_path}, size={os.path.getsize(chunk_path)} bytes[/yellow]")
-        else:
-            self.console.print(f"[red]split_chunk() -> file: {chunk_path} does NOT exist[/red]")
-
-        # Start transcription in a separate thread
-        t = threading.Thread(
-            target=self._transcribe_chunk, 
-            args=(chunk_path, self.current_chunk_index)
-        )
-        t.start()
-        self.transcription_threads.append(t)
-
-        # Prepare for the next chunk
-        self.current_chunk_index += 1
-        new_filename = os.path.join(self.temp_dir, f"temp_audio_file{self.current_chunk_index}.wav")
-        self.active_filename = new_filename
-
-        try:
-            # Create a new wave file for the next chunk
-            self.active_wave_file = wave.open(new_filename, 'wb')
-            self.active_wave_file.setnchannels(self.config.channels)
-            self.active_wave_file.setsampwidth(self.audio.get_sample_size(self.config.format))
-            self.active_wave_file.setframerate(self.config.rate)
-            self.console.print(f"[green]Opened new chunk file: {os.path.basename(new_filename)}[/green]")
+            # Signal that text is ready
+            self.text_ready.set()
+            
         except Exception as e:
-            self.console.print(f"[bold red]Failed to open new chunk file {new_filename}: {e}[/bold red]")
+            self.console.print(f"[bold red]Transcription error: {e}[/bold red]")
+            self._cleanup_resources()
+            self.text_ready.set()  # Set the event even on error to prevent hanging
     
-    def _transcribe_chunk(self, chunk_path: str, chunk_idx: int) -> None:
-        """Transcribe a single audio chunk."""
-        text = self.transcriber.transcribe(chunk_path)
-        
-        self.console.print(f"[cyan]Partial transcription of {os.path.basename(chunk_path)}[/cyan]")
-        self.console.print(f"[bold magenta]{text}[/bold magenta]\n")
-
-        self.partial_transcripts[chunk_idx] = text
-    
-    def stop_and_transcribe(self) -> None:
-        """Stop recording and transcribe all chunks."""
+    def stop_and_transcribe(self):
+        """Stop recording and transcribe the audio."""
         if not self.recording:
             self.console.print("[italic bold yellow]Recording not in progress[/italic bold yellow]")
             return
 
         self.console.print("[bold blue]Stopping recording and transcribing...[/bold blue]")
-        self.recording = False
-
-        # Wait for recording thread to finish
-        if self.recording_thread:
-            self.recording_thread.join()
-
-        # Process the final chunk if it exists and has content
-        if self.active_filename and os.path.exists(self.active_filename):
-            self.console.print(f"[yellow]Final chunk: {self.active_filename}, size={os.path.getsize(self.active_filename)} bytes[/yellow]")
-            
-            # WAV header is 44 bytes, so check if there's actual audio data
-            if os.path.getsize(self.active_filename) > 44:
-                final_chunk_idx = self.current_chunk_index
-                t = threading.Thread(
-                    target=self._transcribe_chunk, 
-                    args=(self.active_filename, final_chunk_idx)
-                )
-                t.start()
-                self.transcription_threads.append(t)
-                self.current_chunk_index += 1
-
+        
         # Update tray icon
         self.tray.set_color('blue', self.config.send_enter)
         
-        # Wait for all transcription threads to complete
-        self.console.print("[blue]Waiting for partial transcriptions...[/blue]")
-        for t in self.transcription_threads:
-            t.join()
-
-        # Combine all transcriptions in order
-        ordered_texts = []
-        for idx in sorted(self.partial_transcripts.keys()):
-            ordered_texts.append(self.partial_transcripts[idx])
+        # Stop recording - clear the recording_start event
+        if self.recorder and hasattr(self.recorder, 'recording_start'):
+            self.recorder.recording_start.clear()
         
-        full_text = "".join(ordered_texts)
-        if full_text and full_text[0].isspace():
-            full_text = full_text[1:]
+        # Start transcription in a separate thread
+        self.transcription_thread = threading.Thread(target=self._transcription_thread_func)
+        self.transcription_thread.daemon = True
+        self.transcription_thread.start()
+        
+        # Wait for transcription to complete
+        self.text_ready.wait()
+        
+        # Process the result
+        if self.final_text:
+            # Display the result
+            panel = Panel(
+                f"[bold magenta]Final Transcription:[/bold magenta] {self.final_text}",
+                title="Transcription",
+                border_style="yellow"
+            )
+            self.console.print(panel)
 
-        # Display the result
-        panel = Panel(
-            f"[bold magenta]Final Combined Transcription:[/bold magenta] {full_text}",
-            title="Transcription",
-            border_style="yellow"
-        )
-        self.console.print(panel)
-
-        # Copy to clipboard and paste
-        pyperclip.copy(full_text)
-        keyboard.send('ctrl+v')
-        if self.config.send_enter:
-            keyboard.send('enter')
-            self.console.print("[yellow]Sent an ENTER keystroke after transcription.[/yellow]")
+            # Copy to clipboard and paste
+            pyperclip.copy(self.final_text)
+            keyboard.send('ctrl+v')
+            if self.config.send_enter:
+                keyboard.send('enter')
+                self.console.print("[yellow]Sent an ENTER keystroke after transcription.[/yellow]")
+        else:
+            self.console.print("[yellow]No transcription result available.[/yellow]")
 
         self.console.print("[italic green]Done.[/italic green]")
         self.tray.set_color('gray', self.config.send_enter)
