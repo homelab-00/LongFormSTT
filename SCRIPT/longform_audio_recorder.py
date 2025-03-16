@@ -1,5 +1,20 @@
 # audio_recorder.py
-import numpy as np
+#
+# Handles audio recording, buffering, and chunking for long-form transcription
+#
+# This module:
+# - Captures audio from microphone or system audio
+# - Buffers audio data and writes to temporary WAV files
+# - Detects silence to intelligently split audio into chunks (via peak amplitude detection and not WebRTC VAD)
+# - Manages time-based splitting for extended recordings
+# - Coordinates asynchronous transcription of audio chunks
+# - Combines partial transcriptions into a complete result
+# - Sends transcribed text to clipboard and optionally presses Enter
+# - Provides visual feedback through the tray icon during operations
+#
+# The chunking approach allows handling very long recordings while
+# providing incremental transcription results
+
 import time
 import pyaudio
 import wave
@@ -9,10 +24,9 @@ import pyperclip
 import keyboard
 import struct
 import glob
-from rich.console import Console
 from rich.panel import Panel
 
-class AudioRecorder:
+class LongFormAudioRecorder:
     def __init__(self, config, console, transcriber, tray):
         self.config = config
         self.console = console

@@ -1,4 +1,21 @@
 # transcription_engine.py
+#
+# Core engine for speech transcription using Faster Whisper models
+#
+# The transcriber is a shared resource used by the long-form recorder,
+# the real-time transcription handler, and the static file processor
+#
+# This module:
+# - Loads and manages Whisper models for audio transcription
+# - Provides methods to transcribe both audio files and raw audio data
+# - Handles language selection and task type (transcribe vs. translate)
+# - Cleans up transcription results and removes known hallucinations
+# - Supports toggling between languages (e.g., Greek and English)
+# - Automatically selects appropriate task based on language:
+#   * For English and Greek: Uses "transcribe" task
+#   * For other languages: Uses "translate" task (to English)
+#
+
 import torch
 from rich.console import Console
 from faster_whisper import WhisperModel

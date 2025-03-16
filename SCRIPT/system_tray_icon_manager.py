@@ -1,4 +1,22 @@
 # system_tray_icon_manager.py
+#
+# Manages the system tray icon to provide visual feedback on application state
+#
+# This module:
+# - Creates and manages colored circular icons in the system tray
+# - Provides visual indication of the application's current state:
+#   * Gray: Idle/Ready
+#   * Red: Recording
+#   * Blue: Processing/Transcribing
+#   * Yellow: Waiting for static file transcription
+#   * White: Temporary flash to indicate state change
+# - Uses a green outline to indicate when the "send Enter" option is enabled
+# - Provides flash animation for visual feedback on various operations
+# - Gracefully handles missing dependencies (pystray, PIL) with fallbacks
+#
+# The tray icon helps users quickly understand the current state of the
+# application without needing to check the console output
+
 from rich.console import Console
 from typing import Tuple
 import time

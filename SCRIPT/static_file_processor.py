@@ -1,4 +1,20 @@
 # static_file_processor.py
+#
+# Processes and transcribes pre-recorded audio/video files
+#
+# This module:
+# - Handles selecting audio/video files via a file dialog
+# - Converts various media formats to 16kHz mono WAV using FFmpeg
+# - Applies Voice Activity Detection (WebRTC VAD) to remove silence
+# - Transcribes the processed audio using the transcription engine
+# - Saves transcription results alongside the original file
+# - Manages temporary files and resource cleanup
+# - Provides methods to abort transcription in progress
+# - Updates system tray to indicate transcription status
+#
+# This component allows transcription of existing media files
+# rather than just real-time microphone input
+
 import os
 import sys
 import threading

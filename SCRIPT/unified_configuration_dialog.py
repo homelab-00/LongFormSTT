@@ -1,4 +1,20 @@
 # unified_configuration_dialog.py
+# 
+# Provides a graphical configuration interface for the speech-to-text application
+#
+# This module creates and manages a Tkinter-based configuration dialog that allows:
+# - Setting language preferences separately for Long Form and Real-time STT
+# - Selecting audio sources (microphone or system audio) for each STT mode
+# - Choosing transcription models from locally cached or default options
+# - Toggling the "send Enter key" behavior after transcription
+#
+# The dialog presents a tabbed interface with:
+# - Language tab: Separate language selection for both transcription modes 
+# - Audio Source tab: Audio input configuration for both modes
+# - Models tab: Model selection for both transcription modes
+#
+# Settings are applied upon confirmation and saved to the configuration file
+
 class UnifiedConfigDialog:
     def __init__(self, config, console, realtime_handler, transcriber):
         self.config = config

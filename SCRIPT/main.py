@@ -1,14 +1,24 @@
-# Speech to Text with Faster Whisper
-# - Handles both real-time transcription and static file transcription
-# - Supports language toggling and voice activity detection
+# main.py
+# Main entry point for the Speech to Text application with Faster Whisper
 #
-# --------------------------------------------------------------------------------------
-# Using "Systran/faster-whisper-large-v3" for longform (& static) transcription (by default)
-# Using "deepdml/faster-whisper-large-v3-turbo-ct2" for realtime transcription (by default)
-# 
-# - Due to the fact that the 'turbo' model doesn't support translation, we're passing that
-# job to the longform model (only for 'turbo' models)
-# --------------------------------------------------------------------------------------
+# This module initializes all components and orchestrates the application:
+# - Loads and manages configuration (language settings, audio sources, models)
+# - Creates and coordinates all system components (recorder, transcriber, UI)
+# - Handles hotkey commands via TCP server (F1, F2, ...)
+# - Manages application lifecycle (startup, shutdown, resource handling)
+# - Provides command handlers for all user interactions
+# - Toggles between different transcription modes
+#
+# The application supports three transcription pipelines:
+# 1. Long-form transcription: For extended recordings with chunking support
+# 2. Real-time transcription: For immediate feedback during speech
+# 3. Static file transcription: For processing pre-recorded audio files
+#
+# The application handles translation depending on the model type (applies to real-time models only):
+# Turbo models, which are faster (e.g. deepdml/faster-whisper-large-v3-turbo-ct2 is faster than
+# Systran/faster-whisper-medium) but can only transcribe and not translate, therefore:
+# - For turbo models, translation requests are delegated to the long-form model
+# - Non-turbo models handle both transcription and translation natively
 
 import time
 import sys
@@ -27,7 +37,7 @@ from typing import List
 # Import modules
 from system_tray_icon_manager import TrayManager
 from transcription_engine import Transcriber
-from audio_recorder import AudioRecorder
+from longform_audio_recorder import LongFormAudioRecorder
 from static_file_processor import StaticFileProcessor
 from realtime_transcription_handler import RealtimeTranscriptionHandler
 from unified_configuration_dialog import UnifiedConfigDialog
@@ -68,7 +78,7 @@ class Config:
     send_enter: bool = False
     
     # System settings
-    hotkey_script: str = "AHK_script_(hotkeys_handling).ahk"
+    hotkey_script: str = "AHK_script-hotkeys_handling.ahk"
     
     # Derived properties
     @property
@@ -267,7 +277,7 @@ class STTApp:
         # Initialize components
         self.tray = TrayManager(self.console)
         self.transcriber = Transcriber(self.config, self.console, model_id=self.config.longform_model)
-        self.recorder = AudioRecorder(self.config, self.console, self.transcriber, self.tray)
+        self.recorder = LongFormAudioRecorder(self.config, self.console, self.transcriber, self.tray)
         self.static_processor = StaticFileProcessor(self.config, self.console, self.transcriber, self.tray)
         self.realtime_handler = RealtimeTranscriptionHandler(self.config, self.console, self.transcriber, self.tray, model_name=self.config.realtime_model)
         self.config_dialog = UnifiedConfigDialog(self.config, self.console, self.realtime_handler, self.transcriber)

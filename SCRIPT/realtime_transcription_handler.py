@@ -1,4 +1,22 @@
 # realtime_transcription_handler.py
+#
+# Provides real-time speech-to-text transcription with immediate feedback
+#
+# This module:
+# - Captures and processes audio in real-time from microphone or system audio
+# - Detects speech segments using Voice Activity Detection (WebRTC VAD)
+# - Performs immediate transcription of detected speech
+# - Displays transcription results as they become available
+# - Manages real-time transcription models with lazy loading
+# - Handles translation differently based on model capabilities:
+#   * Turbo models (faster) can only transcribe but not translate
+#   * When using turbo models, translation requests are delegated to the long-form model
+#   * Non-turbo models handle both transcription and translation themselves
+# - Provides graceful error handling with fallback to main model
+#
+# The real-time mode offers lower latency at the cost of potentially
+# reduced accuracy compared to the long-form transcription
+
 import collections
 import numpy as np
 import time
