@@ -26,6 +26,10 @@ class StaticFileProcessor:
         self.transcriber = transcriber
         self.tray = tray
         self.script_dir = os.path.dirname(os.path.abspath(__file__))
+
+        self.transcription_thread = None
+        self.static_transcription_lock = threading.Lock()
+        self.abort_static_transcription = False
     
     def is_transcribing(self) -> bool:
         """Check if a static transcription is currently in progress."""

@@ -5,7 +5,6 @@ import time
 import threading
 import torch
 import pyaudio
-from rich.console import Console
 from rich.panel import Panel
 from faster_whisper import WhisperModel
 

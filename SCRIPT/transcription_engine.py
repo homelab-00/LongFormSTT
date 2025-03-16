@@ -1,6 +1,5 @@
 # transcription_engine.py
 import torch
-import re
 from rich.console import Console
 from faster_whisper import WhisperModel
 

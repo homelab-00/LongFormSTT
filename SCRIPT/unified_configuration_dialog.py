@@ -1,10 +1,4 @@
 # unified_configuration_dialog.py
-import os
-import tkinter as tk
-from tkinter import ttk
-from tkinter import filedialog
-from rich.console import Console
-
 class UnifiedConfigDialog:
     def __init__(self, config, console, realtime_handler, transcriber):
         self.config = config
