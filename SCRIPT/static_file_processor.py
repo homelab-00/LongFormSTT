@@ -26,6 +26,17 @@ class StaticFileProcessor:
         self.transcriber = transcriber
         self.tray = tray
         self.script_dir = os.path.dirname(os.path.abspath(__file__))
+        self.temp_dir = os.path.join(self.script_dir, "temp_audio")
+        
+        # Ensure temp_audio directory exists
+        if not os.path.exists(self.temp_dir):
+            try:
+                os.makedirs(self.temp_dir)
+                self.console.print(f"[green]Created temporary audio directory: {self.temp_dir}[/green]")
+            except Exception as e:
+                self.console.print(f"[red]Failed to create temp directory: {e}[/red]")
+                # Fall back to script directory if temp directory creation fails
+                self.temp_dir = self.script_dir
 
         self.transcription_thread = None
         self.static_transcription_lock = threading.Lock()
@@ -187,8 +198,8 @@ class StaticFileProcessor:
     def _cleanup_temp_files(self) -> None:
         """Remove temporary files used for static transcription."""
         temp_files = [
-            os.path.join(self.script_dir, "temp_static_file.wav"),
-            os.path.join(self.script_dir, "temp_static_silence_removed.wav")
+            os.path.join(self.temp_dir, "temp_static_file.wav"),
+            os.path.join(self.temp_dir, "temp_static_silence_removed.wav")
         ]
         
         for f in temp_files:
@@ -201,7 +212,7 @@ class StaticFileProcessor:
     
     def _ensure_wav_format(self, input_path: str) -> Optional[str]:
         """Convert input file (audio or video) to 16kHz mono WAV."""
-        temp_wav = os.path.join(self.script_dir, "temp_static_file.wav")
+        temp_wav = os.path.join(self.temp_dir, "temp_static_file.wav")
 
         # Check if the file is already a WAV in the correct format
         try:
@@ -255,7 +266,7 @@ class StaticFileProcessor:
             self.console.print("[red]webrtcvad not installed. Skipping VAD.[/red]")
             return in_wav_path
 
-        out_wav = os.path.join(self.script_dir, "temp_static_silence_removed.wav")
+        out_wav = os.path.join(self.temp_dir, "temp_static_silence_removed.wav")
 
         try:
             # Open and read input file

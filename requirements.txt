@@ -1,3 +1,5 @@
+# Depreceated
+
 faster_whisper==1.0.3
 keyboard==0.13.5
 PyAudio==0.2.14

@@ -1,5 +1,7 @@
 # LongFormSTT
 
+[[[NOTE: The README is depreceated. Will update in the future.]]]
+
 A python script that utilizes `faster-whisper` and `pytorch` for long form transcription. Uses silence detection with RMS/peak value. Has global hotkeys for easy use.
 
 ---

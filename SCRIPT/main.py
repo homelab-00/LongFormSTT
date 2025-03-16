@@ -68,7 +68,7 @@ class Config:
     send_enter: bool = False
     
     # System settings
-    hotkey_script: str = "Hotkeys-AHK_A1.ahk"
+    hotkey_script: str = "AHK_script_(hotkeys_handling).ahk"
     
     # Derived properties
     @property
@@ -254,6 +254,15 @@ class STTApp:
         self.config = Config.load_from_file()
         self.script_dir = os.path.dirname(os.path.abspath(__file__))
         self.ahk_pid = None
+        
+        # Ensure temp_audio directory exists
+        self.temp_dir = os.path.join(self.script_dir, "temp_audio")
+        if not os.path.exists(self.temp_dir):
+            try:
+                os.makedirs(self.temp_dir)
+                self.console.print(f"[green]Created temporary audio directory: {self.temp_dir}[/green]")
+            except Exception as e:
+                self.console.print(f"[red]Failed to create temp directory: {e}[/red]")
         
         # Initialize components
         self.tray = TrayManager(self.console)

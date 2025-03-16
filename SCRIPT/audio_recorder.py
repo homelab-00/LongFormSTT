@@ -19,6 +19,17 @@ class AudioRecorder:
         self.transcriber = transcriber
         self.tray = tray
         self.script_dir = os.path.dirname(os.path.abspath(__file__))
+        self.temp_dir = os.path.join(self.script_dir, "temp_audio")
+        
+        # Ensure temp_audio directory exists
+        if not os.path.exists(self.temp_dir):
+            try:
+                os.makedirs(self.temp_dir)
+                self.console.print(f"[green]Created temporary audio directory: {self.temp_dir}[/green]")
+            except Exception as e:
+                self.console.print(f"[red]Failed to create temp directory: {e}[/red]")
+                # Fall back to script directory if temp directory creation fails
+                self.temp_dir = self.script_dir
         
         # Initialize PyAudio
         self.audio = pyaudio.PyAudio()
@@ -43,7 +54,7 @@ class AudioRecorder:
     
     def _cleanup_temp_files(self) -> None:
         """Remove any temporary audio files from previous recordings."""
-        temp_files = glob.glob(os.path.join(self.script_dir, "temp_audio_file*.wav"))
+        temp_files = glob.glob(os.path.join(self.temp_dir, "temp_audio_file*.wav"))
         for f in temp_files:
             try:
                 os.remove(f)
@@ -73,7 +84,7 @@ class AudioRecorder:
 
         # Set up recording
         self.recording = True
-        first_file = os.path.join(self.script_dir, f"temp_audio_file{self.current_chunk_index}.wav")
+        first_file = os.path.join(self.temp_dir, f"temp_audio_file{self.current_chunk_index}.wav")
         self.active_filename = first_file
 
         try:
@@ -210,7 +221,7 @@ class AudioRecorder:
 
         # Prepare for the next chunk
         self.current_chunk_index += 1
-        new_filename = os.path.join(self.script_dir, f"temp_audio_file{self.current_chunk_index}.wav")
+        new_filename = os.path.join(self.temp_dir, f"temp_audio_file{self.current_chunk_index}.wav")
         self.active_filename = new_filename
 
         try:
