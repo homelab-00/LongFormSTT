@@ -31,6 +31,7 @@ import re
 import socket
 import subprocess
 import psutil
+import platform
 from dataclasses import dataclass
 from typing import List
 
@@ -78,7 +79,7 @@ class Config:
     send_enter: bool = False
     
     # System settings
-    hotkey_script: str = "AHK_script-hotkeys_handling.ahk"
+    hotkey_script: str = "linux_hotkeys.py" if platform.system() != 'Windows' else "AHK_script-hotkeys_handling.ahk"
     
     # Derived properties
     @property
@@ -287,7 +288,7 @@ class STTApp:
         """Display startup information."""
         panel_content = (
             f"[bold yellow]Model[/bold yellow]: {self.transcriber.model_id}\n"
-            f"[bold yellow]Hotkeys[/bold yellow]: Controlled by AutoHotKey script '{self.config.hotkey_script}'\n"
+            f"[bold yellow]Hotkeys[/bold yellow]: Controlled by {'AutoHotKey' if platform.system() == 'Windows' else 'Python'} script '{self.config.hotkey_script}'\n"
             " F1  -> Open configuration dialog\n"
             " F2  -> Toggle live transcription\n"
             " F3  -> Start recording\n"
@@ -437,49 +438,80 @@ class STTApp:
         # Flash the tray icon for visual feedback
         self.tray.flash_white('gray', self.config.send_enter)
 
-    def _kill_leftover_ahk(self) -> None:
-        """Kill any existing AHK processes using our script."""
+    def _kill_leftover_hotkey_process(self) -> None:
+        """Kill any existing hotkey processes using our script."""
         for proc in psutil.process_iter(['pid', 'name', 'cmdline']):
             try:
-                if (
-                    proc.info['name'] == 'AutoHotkeyU64.exe'
-                    and proc.info['cmdline'] is not None
-                    and self.config.hotkey_script in ' '.join(proc.info['cmdline'])
-                ):
-                    self.console.print(f"[yellow]Killing leftover AHK process with PID={proc.pid}[/yellow]")
-                    psutil.Process(proc.pid).kill()
+                if platform.system() == 'Windows':
+                    # Windows: Look for AutoHotkey
+                    if (
+                        proc.info['name'] == 'AutoHotkeyU64.exe'
+                        and proc.info['cmdline'] is not None
+                        and self.config.hotkey_script in ' '.join(proc.info['cmdline'])
+                    ):
+                        self.console.print(f"[yellow]Killing leftover AHK process with PID={proc.pid}[/yellow]")
+                        psutil.Process(proc.pid).kill()
+                else:
+                    # Linux: Look for Python process running our hotkey script
+                    if (
+                        (proc.info['name'] == 'python3' or proc.info['name'] == 'python')
+                        and proc.info['cmdline'] is not None
+                        and self.config.hotkey_script in ' '.join(proc.info['cmdline'])
+                    ):
+                        self.console.print(f"[yellow]Killing leftover hotkey process with PID={proc.pid}[/yellow]")
+                        psutil.Process(proc.pid).kill()
             except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
                 pass
     
-    def _start_ahk_script(self) -> None:
-        """Launch the AHK script and track its PID."""
-        # Record existing AHK PIDs before launching
+    def _start_hotkey_script(self) -> None:
+        """Launch the hotkey script and track its PID."""
+        # Record existing script PIDs before launching
         pre_pids = set()
         for proc in psutil.process_iter(['pid', 'name']):
             try:
-                if proc.info['name'] == 'AutoHotkeyU64.exe':
-                    pre_pids.add(proc.info['pid'])
+                if platform.system() == 'Windows':
+                    if proc.info['name'] == 'AutoHotkeyU64.exe':
+                        pre_pids.add(proc.info['pid'])
+                else:
+                    if proc.info['name'] in ['python3', 'python']:
+                        pre_pids.add(proc.info['pid'])
             except (psutil.NoSuchProcess, psutil.AccessDenied):
                 pass
 
-        # Launch the AHK script
-        ahk_path = os.path.join(self.script_dir, self.config.hotkey_script)
-        self.console.print("[green]Launching AHK script...[/green]")
-        subprocess.Popen(
-            [ahk_path],
-            creationflags=subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP,
-            shell=True
-        )
+        # Launch the hotkey script
+        script_path = os.path.join(self.script_dir, self.config.hotkey_script)
+        
+        if platform.system() == 'Windows':
+            self.console.print("[green]Launching AHK script...[/green]")
+            subprocess.Popen(
+                [script_path],
+                creationflags=subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP,
+                shell=True
+            )
+        else:
+            self.console.print("[green]Launching Linux hotkey script...[/green]")
+            # Make sure the script is executable
+            os.chmod(script_path, 0o755)
+            # Start the Python script
+            subprocess.Popen(['python3', script_path], 
+                            stdout=subprocess.DEVNULL, 
+                            stderr=subprocess.DEVNULL, 
+                            start_new_session=True)
 
         # Give it a moment to start
         time.sleep(1.0)
         
-        # Find the new AHK process
+        # Find the new process
         post_pids = set()
-        for proc in psutil.process_iter(['pid', 'name']):
+        for proc in psutil.process_iter(['pid', 'name', 'cmdline']):
             try:
-                if proc.info['name'] == 'AutoHotkeyU64.exe':
-                    post_pids.add(proc.info['pid'])
+                if platform.system() == 'Windows':
+                    if proc.info['name'] == 'AutoHotkeyU64.exe':
+                        post_pids.add(proc.info['pid'])
+                else:
+                    if proc.info['name'] in ['python3', 'python']:
+                        if proc.info['cmdline'] is not None and self.config.hotkey_script in ' '.join(proc.info['cmdline']):
+                            post_pids.add(proc.info['pid'])
             except (psutil.NoSuchProcess, psutil.AccessDenied):
                 pass
 
@@ -487,16 +519,16 @@ class STTApp:
         new_pids = post_pids - pre_pids
         if len(new_pids) == 1:
             self.ahk_pid = new_pids.pop()
-            self.console.print(f"[green]Detected new AHK script PID: {self.ahk_pid}[/green]")
+            self.console.print(f"[green]Detected new hotkey script PID: {self.ahk_pid}[/green]")
         else:
-            self.console.print("[red]Could not detect a single new AHK script PID. No PID stored.[/red]")
+            self.console.print("[red]Could not detect a single new hotkey script PID. No PID stored.[/red]")
             self.ahk_pid = None
     
     def start(self) -> None:
         """Start the application."""
         self._display_info()
-        self._kill_leftover_ahk()
-        self._start_ahk_script()
+        self._kill_leftover_hotkey_process()
+        self._start_hotkey_script()        
         self.tray.set_color('gray', self.config.send_enter)
         self.server.start()
         
@@ -644,7 +676,7 @@ class STTApp:
 
         # Kill AHK script if we know its PID
         if self.ahk_pid is not None:
-            self.console.print(f"[bold red]Killing AHK script with PID={self.ahk_pid}[/bold red]")
+            self.console.print(f"[bold red]Killing hotkey script with PID={self.ahk_pid}[/bold red]")
             try:
                 psutil.Process(self.ahk_pid).kill()
             except Exception as e:
